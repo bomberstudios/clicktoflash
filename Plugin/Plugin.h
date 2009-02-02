@@ -2,7 +2,7 @@
 
 The MIT License
 
-Copyright (c) 2008 Click to Flash Developers
+Copyright (c) 2008-2009 Click to Flash Developers
 
 Permission is hereby granted, free of charge, to any person obtaining a copy
 of this software and associated documentation files (the "Software"), to deal
@@ -34,6 +34,10 @@ THE SOFTWARE.
     DOMElement *_container;
     NSString *_host;
     CTFWhitelistWindowController *_whitelistWindowController;
+    NSTrackingArea *trackingArea;
+    BOOL mouseIsDown;
+    BOOL mouseInside;
+	BOOL _isLoadingFromWhitelist;
 }
 
 + (NSView *)plugInViewWithArguments:(NSDictionary *)arguments;
@@ -42,6 +46,7 @@ THE SOFTWARE.
 
 @property (nonatomic, retain) DOMElement *container;
 @property (nonatomic, retain) NSString *host;
+@property (readonly, nonatomic, retain) NSString *addToWhiteListMenuTitle;
 
 - (IBAction)addToWhitelist:(id)sender;
 - (IBAction)removeFromWhitelist:(id)sender;
