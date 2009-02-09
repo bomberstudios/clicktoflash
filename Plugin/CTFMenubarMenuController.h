@@ -24,36 +24,26 @@ THE SOFTWARE.
 
 */
 
-
 #import <Cocoa/Cocoa.h>
-#import <WebKit/WebKit.h>
 
-@interface CTFClickToFlashPlugin : NSView <WebPlugInViewFactory> {
-    DOMElement *_container;
-    NSString *_host;
-    NSDictionary* _flashVars;
-    NSTrackingArea *trackingArea;
-    NSAlert* _activeAlert;
-    BOOL mouseIsDown;
-    BOOL mouseInside;
-    BOOL _isLoadingFromWhitelist;
-    BOOL _isSifr;
-    BOOL _fromYouTube;
+
+@class CTFWhitelistWindowController;
+
+extern NSString* kCTFLoadAllFlashViews;
+extern NSString* kCTFLoadFlashViewsForWindow;
+
+
+@interface CTFMenubarMenuController : NSObject {
+	IBOutlet NSMenu* menu;
+    CTFWhitelistWindowController *_whitelistWindowController;
 }
 
-+ (NSView *)plugInViewWithArguments:(NSDictionary *)arguments;
++ (CTFMenubarMenuController*) sharedController;
 
-- (id) initWithArguments:(NSDictionary *)arguments;
+- (void) loadFlashForWindow: (NSWindow*) window;
 
-@property (nonatomic, retain) DOMElement *container;
-@property (nonatomic, retain) NSString *host;
-@property (readonly, nonatomic, retain) NSString *addToWhiteListMenuTitle;
-
-- (IBAction)addToWhitelist:(id)sender;
-- (IBAction)removeFromWhitelist:(id)sender;
-- (IBAction)editWhitelist:(id)sender;
-- (IBAction)loadFlash:(id)sender;
-- (IBAction)loadH264:(id)sender;
-- (IBAction)loadAllOnPage:(id)sender;
+- (IBAction) loadAllFlash: (id) sender;
+- (IBAction) loadKeyWindowFlash: (id) sender;
+- (IBAction) showSettingsWindow: (id) sender;
 
 @end
