@@ -25,14 +25,16 @@ THE SOFTWARE.
 */
 
 #import "CTFMenubarMenuController.h"
-
 #import "CTFWhitelistWindowController.h"
 
+#import "Plugin.h"
 
 NSString* kCTFLoadAllFlashViews = @"CTFLoadAllFlashViews";
 NSString* kCTFLoadFlashViewsForWindow = @"CTFLoadFlashViewsForWindow";
+NSString* kCTFLoadInvisibleFlashViewsForWindow = @"CTFLoadInvisibleFlashViewsForWindow";
 
-static CTFMenubarMenuController* sSingleton = nil;
+NSUInteger maxInvisibleDimension = 50;
+
 
 static NSString* kApplicationsToInstallMenuInto[] = {
     @"com.apple.Safari",
@@ -111,6 +113,9 @@ static NSMenu* appMenu()
 #pragma mark Lifetime management
 
 
+static CTFMenubarMenuController* sSingleton = nil;
+
+
 - (id) init
 {
 	if( sSingleton ) {
@@ -125,6 +130,8 @@ static NSMenu* appMenu()
 	if( self ) {
 		if( ! [ NSBundle loadNibNamed: @"MenubarMenu" owner: self ] )
 			NSLog( @"ClickToFlash: Could not load menubar menu nib" );
+		
+		_views = NSCreateHashTable( NSNonRetainedObjectHashCallBacks, 0 );
 	}
 	
 	return self;
@@ -134,7 +141,8 @@ static NSMenu* appMenu()
 - (void) dealloc
 {
 	[ _whitelistWindowController release ];
-    
+    NSFreeHashTable( _views );
+	
 	[ super dealloc ];
 }
 
@@ -178,12 +186,87 @@ static NSMenu* appMenu()
 
 
 #pragma mark -
+#pragma mark View Management
+
+
+- (void) registerView: (NSView*) view
+{
+	NSHashInsertIfAbsent( _views, view );
+}
+
+
+- (void) unregisterView: (NSView*) view
+{
+	NSHashRemove( _views, view );
+}
+
+
+- (BOOL) _atLeastOneFlashViewExists
+{
+	return NSCountHashTable( _views ) > 0;
+}
+
+
+- (BOOL) _flashViewExistsForKeyWindowWithInvisibleOnly: (BOOL) mustBeInvisible
+{
+	BOOL rslt = NO;
+	
+	NSWindow* keyWindow = [ NSApp keyWindow ];
+	
+	NSHashEnumerator enumerator = NSEnumerateHashTable( _views );
+	CTFClickToFlashPlugin* item;
+	while( item = NSNextHashEnumeratorItem( &enumerator ) ) {
+		if( [ item window ] == keyWindow ) {
+			if( !mustBeInvisible || [ item isConsideredInvisible ] ) {
+				rslt = YES;
+				break;
+			}
+		}
+	}
+	NSEndHashTableEnumeration( &enumerator );
+	
+	return rslt;
+}
+
+- (BOOL) _flashViewExistsForKeyWindow
+{
+	return [ self _flashViewExistsForKeyWindowWithInvisibleOnly: NO ];
+}
+
+- (BOOL) _invisibleFlashViewExistsForKeyWindow;
+{
+	return [ self _flashViewExistsForKeyWindowWithInvisibleOnly: YES ];
+}
+
+- (BOOL) validateMenuItem: (NSMenuItem*) item
+{
+	if ( [ item action ] == @selector( loadAllFlash: ) ) {
+		return [ self _atLeastOneFlashViewExists ];
+	}
+	else if( [ item action ] == @selector( loadKeyWindowFlash: ) ) {
+		return [ self _flashViewExistsForKeyWindow ];
+	}
+	else if( [ item action ] == @selector(loadKeyWindowInvisibleFlash: ) ) {
+		return [ self _invisibleFlashViewExistsForKeyWindow ];
+	}
+	
+	return YES;
+}
+
+#pragma mark -
 #pragma mark Actions
 
 
 - (void) loadFlashForWindow: (NSWindow*) window
 {
     [ [ NSNotificationCenter defaultCenter ] postNotificationName: kCTFLoadFlashViewsForWindow 
+                                                           object: window ];
+}
+
+
+- (void) loadInvisibleFlashForWindow: (NSWindow*) window
+{
+    [ [ NSNotificationCenter defaultCenter ] postNotificationName: kCTFLoadInvisibleFlashViewsForWindow 
                                                            object: window ];
 }
 
@@ -203,6 +286,14 @@ static NSMenu* appMenu()
 }
 
 
+- (IBAction) loadKeyWindowInvisibleFlash: (id) sender
+{
+	NSWindow* window = [ NSApp keyWindow ];
+	if( window )
+		[ self loadInvisibleFlashForWindow: window ];
+}
+
+
 - (IBAction) showSettingsWindow: (id) sender
 {
 	if( _whitelistWindowController == nil )
@@ -210,6 +301,5 @@ static NSMenu* appMenu()
 	
 	[ _whitelistWindowController showWindow: sender ];
 }
-
 
 @end

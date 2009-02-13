@@ -41,6 +41,7 @@ THE SOFTWARE.
     BOOL _fromYouTube;
 	WebView *_webView;
 	NSUInteger _sifrVersion;
+	NSString *_baseURL;
 }
 
 + (NSView *)plugInViewWithArguments:(NSDictionary *)arguments;
@@ -51,6 +52,7 @@ THE SOFTWARE.
 @property (nonatomic, retain) NSString *host;
 @property (nonatomic, retain) WebView *webView;
 @property (readonly, nonatomic, retain) NSString *addToWhiteListMenuTitle;
+@property (retain) NSString *baseURL;
 
 - (IBAction)addToWhitelist:(id)sender;
 - (IBAction)removeFromWhitelist:(id)sender;
@@ -58,5 +60,7 @@ THE SOFTWARE.
 - (IBAction)loadFlash:(id)sender;
 - (IBAction)loadH264:(id)sender;
 - (IBAction)loadAllOnPage:(id)sender;
+
+- (BOOL) isConsideredInvisible;
 
 @end

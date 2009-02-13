@@ -36,12 +36,13 @@ static NSString *sFlashOldMIMEType = @"application/x-shockwave-flash";
 static NSString *sFlashNewMIMEType = @"application/futuresplash";
 
     // NSUserDefaults keys
-       NSString *sHostWhitelistDefaultsKey = @"ClickToFlash_whitelist";
+static NSString *sHostSiteInfoDefaultsKey = @"ClickToFlash_siteInfo";
 static NSString *sAllowSifrDefaultsKey = @"ClickToFlash_allowSifr";
 static NSString *sUseYouTubeH264DefaultsKey = @"ClickToFlash_useYouTubeH264";
+static NSString *sAutoLoadInvisibleFlashViewsKey = @"ClickToFlash_autoLoadInvisibleViews";
 
     // NSNotification names
-	   NSString *sCTFWhitelistAdditionMade = @"CTFWhitelistAdditionMade";
+static NSString *sCTFWhitelistAdditionMade = @"CTFWhitelistAdditionMade";
 
 static NSString *sSifrModeDefaultsKey = @"ClickToFlash_sifrMode";
 static NSString *sSifr2Test		= @"sIFR != null && typeof sIFR == \"function\"";
@@ -51,12 +52,16 @@ static NSString *sSifrRollbackJS	= @"sIFR.rollback()";
 static NSString *sSifr2AddOnJSFilename = @"sifr2-addons";
 static NSString *sSifr3AddOnJSFilename = @"sifr3-addons";
 
-typedef enum
-{
+typedef enum {
 	CTFSifrModeDoNothing	= 0, 
 	CTFSifrModeAllowSifr	= 1, 
 	CTFSifrModeDeSifr		= 2
 } CTFSifrMode;
+
+typedef enum {
+    CTFSiteKindWhitelist = 0
+} CTGSiteKind;
+
 
 @interface CTFClickToFlashPlugin (Internal)
 - (void) _convertTypesForFlashContainer;
@@ -65,7 +70,7 @@ typedef enum
 - (void) _drawBackground;
 - (BOOL) _isOptionPressed;
 - (BOOL) _isHostWhitelisted;
-- (NSMutableArray *)_hostWhitelist;
+- (NSMutableArray *) _mutableSiteInfo;
 - (void) _alertDone;
 - (void) _abortAlert;
 - (void) _addHostToWhitelist;
@@ -83,6 +88,47 @@ typedef enum
 @end
 
 
+#pragma mark -
+#pragma mark Whitelist Utility Functions
+
+
+    // Simple ForEach macro to make life easier on those porting to Tiger
+    // than using Leopard's fast enumeration and "in" keyword:
+#define CTFForEachObject( Type, varName, container ) \
+    NSEnumerator* feoEnum_##__LINE__ = [ container objectEnumerator ]; \
+    Type* varName; \
+    while( varName = [ feoEnum_##__LINE__ nextObject ] )
+
+static NSUInteger indexOfItemForSite( NSArray* arr, NSString* site )
+{
+    int i = 0;
+    CTFForEachObject( NSDictionary, item, arr ) {
+        if( [ [ item objectForKey: @"site" ] isEqualToString: site ] )
+            return i;
+        ++i;
+    }
+    
+    return NSNotFound;
+}
+
+static NSDictionary* itemForSite( NSArray* arr, NSString* site )
+{
+    NSUInteger index = indexOfItemForSite( arr, site );
+    
+    if( index != NSNotFound )
+        return [ arr objectAtIndex: index ];
+    
+	return nil;
+}
+
+static NSDictionary* whitelistItemForSite( NSString* site )
+{
+    return [ NSDictionary dictionaryWithObjectsAndKeys: site, @"site",
+                [ NSNumber numberWithInt: CTFSiteKindWhitelist ], @"kind",
+                nil ];
+}
+
+
 @implementation CTFClickToFlashPlugin
 
 
@@ -98,6 +144,7 @@ typedef enum
 #pragma mark -
 #pragma mark Initialization and Superclass Overrides
 
+
 - (void) _migrateWhitelist
 {
     // Migrate from the old location to the new location.  We'll leave
@@ -108,12 +155,17 @@ typedef enum
     
     id oldWhitelist = [ defaults objectForKey: @"ClickToFlash.whitelist" ];
     if( oldWhitelist ) {
-        id newWhitelist = [ defaults objectForKey: sHostWhitelistDefaultsKey ];
+        id newWhitelist = [ defaults objectForKey: sHostSiteInfoDefaultsKey ];
         
         if( newWhitelist == nil ) {
-            [ defaults setObject: oldWhitelist forKey: sHostWhitelistDefaultsKey ];
-            [ defaults removeObjectForKey: @"ClickToFlash.whitelist"];
+            NSMutableArray* newWhitelist = [ NSMutableArray arrayWithCapacity: [ oldWhitelist count ] ];
+            CTFForEachObject( NSString, site, oldWhitelist ) {
+                [ newWhitelist addObject: whitelistItemForSite( site ) ];
+            }
+            [ defaults setObject: newWhitelist forKey: sHostSiteInfoDefaultsKey ];
         }
+
+        [ defaults removeObjectForKey: @"ClickToFlash.whitelist"];
     }
 }
 
@@ -138,6 +190,7 @@ typedef enum
         // Get URL and test against the whitelist
         
         NSURL *base = [arguments objectForKey:WebPlugInBaseURLKey];
+		[self setBaseURL:[base absoluteString]];
         if (base) {
             self.host = [base host];
 
@@ -145,6 +198,7 @@ typedef enum
                 loadFromWhiteList = true;
             }
         }
+
         
         // Check for sIFR - http://www.mikeindustries.com/sifr/
         
@@ -208,8 +262,9 @@ typedef enum
         // Set tooltip
         
         NSDictionary *attributes = [arguments objectForKey:WebPlugInAttributesKey];
+		NSString *src = nil;
         if (attributes != nil) {
-            NSString *src = [attributes objectForKey:@"src"];
+            src = [attributes objectForKey:@"src"];
             if (src)
                 [self setToolTip:src];
             else {
@@ -218,12 +273,23 @@ typedef enum
                     [self setToolTip:src];
             }
         }
+		
+		// send a notification so that all flash objects can be tracked
+		
+		if ( [ [ NSUserDefaults standardUserDefaults ] boolForKey: sAutoLoadInvisibleFlashViewsKey ]
+				&& [ self isConsideredInvisible ] ) {
+			// auto-loading is on and this view meets the size constraints
+			[self _convertTypesForContainer];
+		} else {
+			// we only want to track it if we don't auto-load it
+			[[CTFMenubarMenuController sharedController] registerView: self];
+		}
         
         // Observe various things:
         
         NSNotificationCenter* center = [NSNotificationCenter defaultCenter];
         
-            // Observe for additions to the whitelist (can't use KVO due to the dot in the pref key):
+            // Observe for additions to the whitelist:
         [center addObserver: self 
                    selector: @selector( _whitelistAdditionMade: ) 
                        name: sCTFWhitelistAdditionMade 
@@ -238,6 +304,11 @@ typedef enum
 				   selector: @selector( _loadContentForWindow: ) 
 					   name: kCTFLoadFlashViewsForWindow 
 					 object: nil ];
+		
+		[center addObserver: self 
+				   selector: @selector( _loadInvisibleContentForWindow: ) 
+					   name: kCTFLoadInvisibleFlashViewsForWindow
+					 object: nil ];
     }
 
     return self;
@@ -246,6 +317,9 @@ typedef enum
 - (void) dealloc
 {
     [self _abortAlert];        // to be on the safe side
+	
+	// notify that this ClickToFlash plugin is going away
+	[[CTFMenubarMenuController sharedController] unregisterView: self];
     
     self.container = nil;
     self.host = nil;
@@ -363,13 +437,13 @@ typedef enum
 
 - (BOOL) _isHostWhitelisted
 {
-    NSArray *hostWhitelist = [[NSUserDefaults standardUserDefaults] stringArrayForKey:sHostWhitelistDefaultsKey];
-    return hostWhitelist && [hostWhitelist containsObject:self.host];
+    NSArray *hostWhitelist = [[NSUserDefaults standardUserDefaults] arrayForKey:sHostSiteInfoDefaultsKey];
+    return hostWhitelist && itemForSite(hostWhitelist, self.host) != nil;
 }
 
-- (NSMutableArray *)_hostWhitelist
+- (NSMutableArray *) _mutableSiteInfo
 {
-    NSMutableArray *hostWhitelist = [[[[NSUserDefaults standardUserDefaults] stringArrayForKey:sHostWhitelistDefaultsKey] mutableCopy] autorelease];
+    NSMutableArray *hostWhitelist = [[[[NSUserDefaults standardUserDefaults] arrayForKey:sHostSiteInfoDefaultsKey] mutableCopy] autorelease];
     if (hostWhitelist == nil) {
         hostWhitelist = [NSMutableArray array];
     }
@@ -378,23 +452,37 @@ typedef enum
 
 - (void) _addHostToWhitelist
 {
-    NSMutableArray *hostWhitelist = [self _hostWhitelist];
-    [hostWhitelist addObject:self.host];
-    [[NSUserDefaults standardUserDefaults] setObject:hostWhitelist forKey:sHostWhitelistDefaultsKey];
+    NSMutableArray *siteInfo = [self _mutableSiteInfo];
+    [siteInfo addObject: whitelistItemForSite(self.host)];
+    [[NSUserDefaults standardUserDefaults] setObject: siteInfo forKey: sHostSiteInfoDefaultsKey];
     [[NSNotificationCenter defaultCenter] postNotificationName: sCTFWhitelistAdditionMade object: self];
 }
 
 - (void) _removeHostFromWhitelist
 {
-    NSMutableArray *hostWhitelist = [self _hostWhitelist];
-    [hostWhitelist removeObject:self.host];
-    [[NSUserDefaults standardUserDefaults] setObject:hostWhitelist forKey:sHostWhitelistDefaultsKey];
+    NSMutableArray *siteInfo = [self _mutableSiteInfo];
+    NSUInteger foundIndex = indexOfItemForSite(siteInfo, self.host);
+    
+    if(foundIndex != NSNotFound) {
+        [siteInfo removeObjectAtIndex: foundIndex];
+        [[NSUserDefaults standardUserDefaults] setObject: siteInfo forKey: sHostSiteInfoDefaultsKey];
+    }
 }
 
 - (void) _whitelistAdditionMade: (NSNotification*) notification
 {
 	if ([self _isHostWhitelisted])
 		[self _convertTypesForContainer];
+}
+
+- (BOOL) isConsideredInvisible
+{
+	DOMElement* clonedElement = (DOMElement*) [ self.container cloneNode: NO ];
+	
+	int height = [[clonedElement getAttribute:@"height"] intValue];
+	int width = [[clonedElement getAttribute:@"width"] intValue];
+	
+	return (height <= maxInvisibleDimension) && (width <= maxInvisibleDimension);
 }
 
 #pragma mark -
@@ -491,6 +579,13 @@ typedef enum
 {
 	if( [ notification object ] == [ self window ] )
 		[ self _convertTypesForContainer ];
+}
+
+- (void) _loadInvisibleContentForWindow: (NSNotification*) notification
+{
+	if( [ notification object ] == [ self window ] && [ self isConsideredInvisible ] ) {
+		[ self _convertTypesForContainer ];
+	}
 }
 
 #pragma mark -
@@ -649,9 +744,7 @@ typedef enum
     
     NSArray* args = [ flashvarString componentsSeparatedByString: @"&" ];
     
-    NSEnumerator* objEnum = [ args objectEnumerator ];
-    NSString* oneArg;
-    while( oneArg = [ objEnum nextObject ] ) {
+    CTFForEachObject( NSString, oneArg, args ) {
         NSRange sepRange = [ oneArg rangeOfString: @"=" ];
         if( sepRange.location != NSNotFound ) {
             NSString* key = [ oneArg substringToIndex: sepRange.location ];
@@ -740,6 +833,9 @@ typedef enum
 
 - (void) _convertTypesForContainer
 {
+	// notify that this ClickToFlash plugin is going away
+	[[CTFMenubarMenuController sharedController] unregisterView: self];
+	
     if ([self _useH264Version])
         [self _convertToMP4Container];
     else
@@ -833,5 +929,6 @@ typedef enum
 @synthesize webView = _webView;
 @synthesize container = _container;
 @synthesize host = _host;
+@synthesize baseURL = _baseURL;
 
 @end
