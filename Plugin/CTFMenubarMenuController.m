@@ -33,7 +33,7 @@ NSString* kCTFLoadAllFlashViews = @"CTFLoadAllFlashViews";
 NSString* kCTFLoadFlashViewsForWindow = @"CTFLoadFlashViewsForWindow";
 NSString* kCTFLoadInvisibleFlashViewsForWindow = @"CTFLoadInvisibleFlashViewsForWindow";
 
-NSUInteger maxInvisibleDimension = 8;
+NSInteger maxInvisibleDimension = 8;
 
 
 static NSString* kApplicationsToInstallMenuInto[] = {
@@ -79,32 +79,38 @@ static NSMenu* appMenu()
 {
     NSBundle* appBundle = [ NSBundle mainBundle ];
     NSNumber* indx = [ appBundle objectForInfoDictionaryKey: @"ClickToFlashPrefsAppMenuItemIndex" ];
-    if( indx )
-        return [ indx intValue ];
-
+	
 	NSMenu* applicationMenu = appMenu();
-    int insertLocation = -1, showPrefsItem = -1;
-    int i, count = [ applicationMenu numberOfItems ];
-    for( i = 0 ; i < count ; ++i ) {
-        // Put it before the first separator after the preferences item.
-        
-        NSMenuItem* item = [ applicationMenu itemAtIndex: i ];
-        
-        if( [ item action ] == @selector( showPreferences: ) )
-            showPrefsItem = i;
-        
-        if( showPrefsItem >= 0 && [ item isSeparatorItem ] ) {
-            insertLocation = i;
-            break;
-        }
-    }
-    
-    if( insertLocation == -1 ) {
-        if( showPrefsItem >= 0 )
-            insertLocation = showPrefsItem + 1;
-        else
-            insertLocation = 4;  // didn't find it, assume it's item 3 (the default for most apps)
-    }
+	int insertLocation = -1, count = [ applicationMenu numberOfItems ];
+    if( indx ) {
+        insertLocation = [ indx intValue ];
+	} else {
+		int showPrefsItem = -1;
+		int i;
+		for( i = 0 ; i < count ; ++i ) {
+			// Put it before the first separator after the preferences item.
+			
+			NSMenuItem* item = [ applicationMenu itemAtIndex: i ];
+			
+			if( [ item action ] == @selector( showPreferences: ) )
+				showPrefsItem = i;
+			
+			if( showPrefsItem >= 0 && [ item isSeparatorItem ] ) {
+				insertLocation = i;
+				break;
+			}
+		}
+		
+		if( insertLocation == -1 ) {
+			if( showPrefsItem >= 0 )
+				insertLocation = showPrefsItem + 1;
+			else
+				insertLocation = 4;  // didn't find it, assume it's item 3 (the default for most apps)
+		}
+	}
+	
+	if ((insertLocation > count) || (insertLocation < 0))
+		insertLocation = count;
     
     return insertLocation;
 }
@@ -221,7 +227,7 @@ static CTFMenubarMenuController* sSingleton = nil;
 	
 	NSHashEnumerator enumerator = NSEnumerateHashTable( _views );
 	CTFClickToFlashPlugin* item;
-	while( item = NSNextHashEnumeratorItem( &enumerator ) ) {
+	while( ( item = NSNextHashEnumeratorItem( &enumerator ) ) ) {
 		if( [ item window ] == keyWindow ) {
 			if( !mustBeInvisible || [ item isConsideredInvisible ] ) {
 				rslt = YES;
