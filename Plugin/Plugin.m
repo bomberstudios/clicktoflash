@@ -42,7 +42,7 @@ static NSString *sFlashNewMIMEType = @"application/futuresplash";
     // NSUserDefaults keys
 static NSString *sUseYouTubeH264DefaultsKey = @"ClickToFlash_useYouTubeH264";
 static NSString *sAutoLoadInvisibleFlashViewsKey = @"ClickToFlash_autoLoadInvisibleViews";
-static NSString *sCheckForUpdatesOnFirstLoadKey = @"ClickToFlash_checkForUpdatesOnFirstLoad";
+static NSString *sAutomaticallyCheckForUpdates = @"ClickToFlash_checkForUpdatesOnFirstLoad";
 
 
 @interface CTFClickToFlashPlugin (Internal)
@@ -87,19 +87,24 @@ static NSString *sCheckForUpdatesOnFirstLoadKey = @"ClickToFlash_checkForUpdates
     self = [super init];
     if (self) {
         {
-			if ([ [ NSUserDefaults standardUserDefaults ] boolForKey: sCheckForUpdatesOnFirstLoadKey ]) {
-				static BOOL checkedForUpdate = NO;
-				if (!checkedForUpdate) {
-					checkedForUpdate = YES; NSBundle *clickToFlashBundle = [NSBundle bundleWithIdentifier:@"com.github.rentzsch.clicktoflash"];
-					NSAssert(clickToFlashBundle, nil);
-					SUUpdater *updater = [SUUpdater updaterForBundle:clickToFlashBundle];
-					NSAssert(updater, nil);
-					[updater setAutomaticallyChecksForUpdates:YES];
-					[updater resetUpdateCycle];
-				}
-			}
+            if (![[NSUserDefaults standardUserDefaults] objectForKey:sAutomaticallyCheckForUpdates]) {
+                [[NSUserDefaults standardUserDefaults] setBool:YES forKey:sAutomaticallyCheckForUpdates];
+            }
+            if ([[NSUserDefaults standardUserDefaults] boolForKey:sAutomaticallyCheckForUpdates]) {
+                static BOOL checkedForUpdate = NO;
+                if (!checkedForUpdate) {
+                    checkedForUpdate = YES;
+                    NSBundle *clickToFlashBundle = [NSBundle bundleWithIdentifier:@"com.github.rentzsch.clicktoflash"];
+                    NSAssert(clickToFlashBundle, nil);
+                    SUUpdater *updater = [SUUpdater updaterForBundle:clickToFlashBundle];
+                    NSAssert(updater, nil);
+					[updater checkForUpdatesInBackground];
+                    [updater setAutomaticallyChecksForUpdates:YES];
+                    [updater resetUpdateCycle];
+                }
+            }
         }
-		
+        
 		self.webView = [[[arguments objectForKey:WebPlugInContainerKey] webFrame] webView];
 		
         self.container = [arguments objectForKey:WebPlugInContainingElementKey];

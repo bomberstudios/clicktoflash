@@ -1,6 +1,6 @@
 #ClickToFlash
 
-[Download ClickToFlash 1.4fc1 here](http://s3.amazonaws.com/clicktoflash/ClickToFlash-1.4fc1.zip). 
+[Download ClickToFlash 1.4fc2 here](http://s3.amazonaws.com/clicktoflash/ClickToFlash-1.4fc2.zip). 
 
 Currently requires Mac OS X 10.5 Leopard.
 
@@ -13,6 +13,16 @@ Please [report bugs and request features](http://rentzsch.lighthouseapp.com/proj
 Want to chip in? [Here's what needs to be done](http://rentzsch.lighthouseapp.com/projects/24342-clicktoflash/tickets?q=not-tagged%3Abrokensite+state%3Aopen&filter=).
 
 ##Version History
+
+* **1.4fc3** [download](http://s3.amazonaws.com/clicktoflash/ClickToFlash-1.4fc3.zip)
+	* *This update is exactly the same as 1.4fc2 and only exists to test/demonstrate Sparkle updating.*
+
+* **1.4fc2** [download](http://s3.amazonaws.com/clicktoflash/ClickToFlash-1.4fc2.zip)
+	* [NEW] Added buttons in settings panel to allow for manual update checking. [[Simone Manganelli](http://github.com/rentzsch/clicktoflash/commit/194f2dc1a8da91298d2e79fb426b60ecf4205d2a)]
+
+	* [NEW] Nil hosts get whitelisted by default. This effectively disables ClickToFlash in Dashboard and other places where it might be desirable to do so. ([millenomi](http://github.com/rentzsch/clicktoflash/commit/18dbcd3ba312290223ff456dd5a08f0d4bb74cd4))
+
+	* [DEV] Add 1.4fc3 to appcast. It's functionally identical to 1.4fc2 and only exists to test Sparkle updating.
 
 * **1.4fc1** [download](http://s3.amazonaws.com/clicktoflash/ClickToFlash-1.4fc1.zip)
 	* [NEW] Menu command to load all flash views -- or just invisible ones -- on a page. This should fix a number of sites that don't at first seem to work with ClickToFlash. (Simone Manganelli, et al.)
@@ -35,7 +45,7 @@ Want to chip in? [Here's what needs to be done](http://rentzsch.lighthouseapp.co
 
 	* [FIX] Fixed bugs identified by clang static analyzer. ([Jeff Johnson](http://github.com/rentzsch/clicktoflash/commit/aced770608344960131f58e49457d0a73687d38c))
 
-	* [FIX] Fixed leak that caused all CtF views to not be deallocated by using validateMenuItem to update the Add <site> to Whitelist menu item instead of a binding. ([1](http://github.com/rentzsch/clicktoflash/commit/912e28f5befe90db92be971d5899de5cbd3b6a89)) 
+	* [FIX] Fixed leak that caused all CtF views to not be deallocated by using validateMenuItem to update the Add `<site>` to Whitelist menu item instead of a binding. ([1](http://github.com/rentzsch/clicktoflash/commit/912e28f5befe90db92be971d5899de5cbd3b6a89)) 
 
 	* [DEV] Fix deprecated use of `+stringWithContentsOfFile:`. ([Chris Parker](http://github.com/rentzsch/clicktoflash/commit/7a1e8490737db4734b3e8fc3374fabfdc49ee756))
 
