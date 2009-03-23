@@ -47,7 +47,10 @@ static NSString *sAutomaticallyCheckForUpdates = @"ClickToFlash_checkForUpdatesO
 
 @interface CTFClickToFlashPlugin (Internal)
 - (void) _convertTypesForFlashContainer;
+- (void) _convertTypesForFlashContainerAfterDelay;
 - (void) _convertToMP4Container;
+- (void) _convertToMP4ContainerAfterDelay;
+- (void) _prepareForConversion;
 - (void) _replaceSelfWithElement: (DOMElement*) newElement;
 
 - (void) _drawBackground;
@@ -79,6 +82,15 @@ static NSString *sAutomaticallyCheckForUpdates = @"ClickToFlash_checkForUpdatesO
 
 
 #pragma mark -
+#pragma mark Sparkle delegate methods
+
+- (NSString *) pathToRelaunchForUpdater:(SUUpdater*)updater
+{
+    return [[NSBundle mainBundle] bundlePath];
+}
+
+
+#pragma mark -
 #pragma mark Initialization and Superclass Overrides
 
 
@@ -96,11 +108,12 @@ static NSString *sAutomaticallyCheckForUpdates = @"ClickToFlash_checkForUpdatesO
                     checkedForUpdate = YES;
                     NSBundle *clickToFlashBundle = [NSBundle bundleWithIdentifier:@"com.github.rentzsch.clicktoflash"];
                     NSAssert(clickToFlashBundle, nil);
-                    SUUpdater *updater = [SUUpdater updaterForBundle:clickToFlashBundle];
-                    NSAssert(updater, nil);
-					[updater checkForUpdatesInBackground];
-                    [updater setAutomaticallyChecksForUpdates:YES];
-                    [updater resetUpdateCycle];
+                    _updater = [SUUpdater updaterForBundle:clickToFlashBundle];
+                    NSAssert(_updater, nil);
+                    [_updater setDelegate:self];
+                    [_updater checkForUpdatesInBackground];
+                    [_updater setAutomaticallyChecksForUpdates:YES];
+                    [_updater resetUpdateCycle];
                 }
             }
         }
@@ -111,49 +124,18 @@ static NSString *sAutomaticallyCheckForUpdates = @"ClickToFlash_checkForUpdatesO
         
         [self _migrateWhitelist];
         
-        BOOL loadFromWhiteList = NO;
-        
         // Get URL and test against the whitelist
         
         NSURL *base = [arguments objectForKey:WebPlugInBaseURLKey];
-		[self setBaseURL:[base absoluteString]];
-        if (base) {
-            self.host = [base host];
+		self.baseURL = [base absoluteString];
+		self.host = [base host];
 
-            if ([self _isHostWhitelisted]) {
-                loadFromWhiteList = true;
-            }
-        }
-
-		// Check the SWF src URL itself against the whitelist (allows embbeded videos from whitelisted sites to play, e.g. YouTube)
-		
-		if( !loadFromWhiteList )
-		{
-            NSString *srcAttribute = [[arguments objectForKey:WebPlugInAttributesKey] objectForKey:@"src"];
-            if (srcAttribute) {
-                NSURL* swfSrc = [NSURL URLWithString:srcAttribute];
-                
-                if( [self _isWhiteListedForHostString:[swfSrc host] ] )
-                {
-                    loadFromWhiteList = true;
-                }
-            }
-		}
-        
-        // Check for sIFR
-        
-        if ([self _isSIFRText: arguments]) {
-            _badgeText = NSLocalizedString(@"sIFR Flash", @"sIFR Flash badge text");
-            
-            if ([self _shouldAutoLoadSIFR])
-                loadFromWhiteList = true;
-            else if ([self _shouldDeSIFR])
-                [self performSelector:@selector(_disableSIFR) withObject:nil afterDelay:0];
-        }
+		self.attributes = [arguments objectForKey:WebPlugInAttributesKey];
+		NSString *srcAttribute = [self.attributes objectForKey:@"src"];
         
         // Read in flashvars (needed to determine YouTube videos)
         
-        NSString* flashvars = [ [ arguments objectForKey: WebPlugInAttributesKey ] objectForKey: @"flashvars" ];
+        NSString* flashvars = [ self.attributes objectForKey: @"flashvars" ];
         if( flashvars != nil )
             _flashVars = [ [ self _flashVarDictionary: flashvars ] retain ];
         
@@ -165,41 +147,72 @@ static NSString *sAutomaticallyCheckForUpdates = @"ClickToFlash_checkForUpdatesO
         _fromYouTube = [self.host isEqualToString:@"www.youtube.com"]
                     || ( flashvars != nil && [flashvars rangeOfString: @"www.youtube.com"].location != NSNotFound );
         
+        // Set up main menus
+        
+		[ CTFMenubarMenuController sharedController ];	// trigger the menu items to be added
+        
+        // Check for sIFR
+        
+        if ([self _isSIFRText: arguments]) {
+            _badgeText = NSLocalizedString(@"sIFR Flash", @"sIFR Flash badge text");
+            
+            if ([self _shouldAutoLoadSIFR]) {
+				_isLoadingFromWhitelist = YES;
+				[self _convertTypesForContainer];
+				return self;
+			}
+            else if ([self _shouldDeSIFR]) {
+				_isLoadingFromWhitelist = YES;
+                [self performSelector:@selector(_disableSIFR) withObject:nil afterDelay:0];
+				return self;
+			}
+        }
+		
+		if ( [ [ NSUserDefaults standardUserDefaults ] boolForKey: sAutoLoadInvisibleFlashViewsKey ]
+			&& [ self isConsideredInvisible ] ) {
+			// auto-loading is on and this view meets the size constraints
+            _isLoadingFromWhitelist = YES;
+			[self _convertTypesForContainer];
+			return self;
+		}
+		
+        BOOL loadFromWhiteList = [self _isHostWhitelisted];
+		
+		// Check the SWF src URL itself against the whitelist (allows embbeded videos from whitelisted sites to play, e.g. YouTube)
+		
+		if( !loadFromWhiteList )
+		{
+            if (srcAttribute) {
+                NSURL* swfSrc = [NSURL URLWithString:srcAttribute];
+                
+                if( [self _isWhiteListedForHostString:[swfSrc host] ] )
+                {
+                    loadFromWhiteList = YES;
+                }
+            }
+		}
+        
         // Handle if this is loading from whitelist
         
         if(loadFromWhiteList && ![self _isOptionPressed]) {
             _isLoadingFromWhitelist = YES;
-            [self performSelector:@selector(_convertTypesForContainer) withObject:nil afterDelay:0];
+			[self _convertTypesForContainer];
+			return self;
         }
-        
-        // Set up main menus
-        
-		[ CTFMenubarMenuController sharedController ];	// trigger the menu items to be added
 		
         // Set tooltip
         
-        NSDictionary *attributes = [arguments objectForKey:WebPlugInAttributesKey];
-		NSString *src = nil;
-        if (attributes != nil) {
-            src = [attributes objectForKey:@"src"];
-            if (src)
-                [self setToolTip:src];
-            else {
-                src = [attributes objectForKey:@"data"];
-                if (src)
-                    [self setToolTip:src];
-            }
-        }
+		if (srcAttribute)
+			[self setToolTip:srcAttribute];
+		else {
+			NSString *src = [self.attributes objectForKey:@"data"];
+			if (src)
+				[self setToolTip:src];
+		}
 		
 		// send a notification so that all flash objects can be tracked
-		if ( [ [ NSUserDefaults standardUserDefaults ] boolForKey: sAutoLoadInvisibleFlashViewsKey ]
-				&& [ self isConsideredInvisible ] ) {
-			// auto-loading is on and this view meets the size constraints
-			[self _convertTypesForContainer];
-		} else {
-			// we only want to track it if we don't auto-load it
-			[[CTFMenubarMenuController sharedController] registerView: self];
-		}
+		// we only want to track it if we don't auto-load it
+		[[CTFMenubarMenuController sharedController] registerView: self];
         
         // Observe various things:
         
@@ -229,7 +242,9 @@ static NSString *sAutomaticallyCheckForUpdates = @"ClickToFlash_checkForUpdatesO
 
 - (void) dealloc
 {
-    [self _abortAlert];        // to be on the safe side
+    [NSObject cancelPreviousPerformRequestsWithTarget:self];
+	
+	[self _abortAlert];        // to be on the safe side
 	
 	// notify that this ClickToFlash plugin is going away
 	[[CTFMenubarMenuController sharedController] unregisterView: self];
@@ -238,12 +253,13 @@ static NSString *sAutomaticallyCheckForUpdates = @"ClickToFlash_checkForUpdatesO
     self.host = nil;
 	self.webView = nil;
 	self.baseURL = nil;
+	self.attributes = nil;
     
     [_flashVars release];
     [_badgeText release];
     
     [[NSNotificationCenter defaultCenter] removeObserver: self];
-
+    [_updater setDelegate:nil];
 #if LOGGING_ENABLED
 	NSLog(@"ClickToFlash:\tdealloc");
 #endif
@@ -259,16 +275,35 @@ static NSString *sAutomaticallyCheckForUpdates = @"ClickToFlash_checkForUpdatesO
 
 - (void) mouseDown:(NSEvent *)event
 {
-    mouseIsDown = YES;
-    mouseInside = YES;
-    [self setNeedsDisplay:YES];
-    
-    // Track the mouse so that we can undo our pressed-in look if the user drags the mouse outside the view, and reinstate it if the user drags it back in.
-    trackingArea = [[NSTrackingArea alloc] initWithRect:[self bounds]
-                                                options:NSTrackingMouseEnteredAndExited | NSTrackingActiveInKeyWindow | NSTrackingEnabledDuringMouseDrag
-                                                  owner:self
-                                               userInfo:nil];
-    [self addTrackingArea:trackingArea];
+	NSRect bounds = [ self bounds ];
+	float viewHeight = bounds.size.height;
+	float margin = 5.0;
+	float gearImageHeight = 16.0;
+	float gearImageWidth = 16.0;
+	
+	NSPoint mouseLocation = [event locationInWindow];
+	NSPoint localMouseLocation = [self convertPoint:mouseLocation fromView:nil];
+	
+	BOOL xCoordWithinGearImage = ( (localMouseLocation.x >= (0 + margin)) &&
+							   (localMouseLocation.x <= (0 + margin + gearImageWidth)) );
+	
+	BOOL yCoordWithinGearImage = ( (localMouseLocation.y >= (viewHeight - margin - gearImageHeight)) &&
+								  (localMouseLocation.y <= (viewHeight - margin)) );
+	
+	if (xCoordWithinGearImage && yCoordWithinGearImage) {
+		[NSMenu popUpContextMenu:[self menuForEvent:event] withEvent:event forView:self];
+	} else {
+		mouseIsDown = YES;
+		mouseInside = YES;
+		[self setNeedsDisplay:YES];
+		
+		// Track the mouse so that we can undo our pressed-in look if the user drags the mouse outside the view, and reinstate it if the user drags it back in.
+		trackingArea = [[NSTrackingArea alloc] initWithRect:[self bounds]
+													options:NSTrackingMouseEnteredAndExited | NSTrackingActiveInKeyWindow | NSTrackingEnabledDuringMouseDrag
+													  owner:self
+												   userInfo:nil];
+		[self addTrackingArea:trackingArea];
+	}
 }
 
 - (void) mouseEntered:(NSEvent *)event
@@ -313,7 +348,28 @@ static NSString *sAutomaticallyCheckForUpdates = @"ClickToFlash_checkForUpdatesO
 	int height = (int)([self webView].frame.size.height);
 	int width = (int)([self webView].frame.size.width);
 	
-	return (height <= maxInvisibleDimension) && (width <= maxInvisibleDimension);
+	if ( (height <= maxInvisibleDimension) && (width <= maxInvisibleDimension) )
+	{
+		return YES;
+	}
+	
+	NSDictionary *attributes = self.attributes;
+	if ( attributes != nil )
+	{
+		NSString *heightObject = [attributes objectForKey:@"height"];
+		NSString *widthObject = [attributes objectForKey:@"width"];
+		if ( heightObject != nil && widthObject != nil )
+		{
+			height = [heightObject intValue];
+			width = [widthObject intValue];
+			if ( (height <= maxInvisibleDimension) && (width <= maxInvisibleDimension) )
+			{
+				return YES;
+			}
+		}
+	}
+	
+	return NO;
 }
 
 #pragma mark -
@@ -432,6 +488,8 @@ static NSString *sAutomaticallyCheckForUpdates = @"ClickToFlash_checkForUpdatesO
 	// Set up for drawing.
 	
 	NSRect bounds = [ self bounds ];
+	float viewWidth = bounds.size.width;
+	float viewHeight = bounds.size.height;
 	
 	// How large would this text be?
 	
@@ -507,6 +565,38 @@ static NSString *sAutomaticallyCheckForUpdates = @"ClickToFlash_checkForUpdatesO
 	[ path stroke ];
 	
     [ str drawAtPoint: loc withAttributes: attrs ];
+	
+	
+	// add the gear for the contextual menu, but only if the view is
+	// greater than a certain size
+	
+	if ((viewWidth > 32) && (viewHeight > 32)) {
+		float margin = 5.0;
+		NSImage *gearImage = [NSImage imageNamed:@"NSActionTemplate"];
+		
+		NSColor *startingColor = [NSColor colorWithDeviceWhite:1.0 alpha:1.0];
+		NSColor *endingColor = [NSColor colorWithDeviceWhite:1.0 alpha:0.0];
+		NSGradient *gradient = [[NSGradient alloc] initWithStartingColor:startingColor endingColor:endingColor];
+		
+		NSPoint gearImageCenter = NSMakePoint(0 - viewWidth/2 + margin + gearImage.size.height/2,
+											   viewHeight/2 - margin - gearImage.size.height/2);
+		
+		// draw gradient behind gear so that it's visible even on dark backgrounds
+		[gradient drawFromCenter:gearImageCenter
+						  radius:0.0
+						toCenter:gearImageCenter
+						  radius:gearImage.size.height/2*1.5
+						 options:0];
+		
+		[gradient release];
+		
+		// draw the gear image
+		[gearImage drawAtPoint:NSMakePoint(0 - viewWidth/2 + margin,viewHeight/2 - margin - gearImage.size.height)
+					  fromRect:NSZeroRect
+					 operation:NSCompositeSourceOver
+					  fraction:1.0];
+	}
+	
 
 	// Now restore the graphics state:
 	
@@ -620,6 +710,13 @@ static NSString *sAutomaticallyCheckForUpdates = @"ClickToFlash_checkForUpdatesO
 
 - (void) _convertToMP4Container
 {
+	// Delay this until the end of the event loop, because it may cause self to be deallocated
+	[self _prepareForConversion];
+	[self performSelector:@selector(_convertToMP4ContainerAfterDelay) withObject:nil afterDelay:0.0];
+}
+
+- (void) _convertToMP4ContainerAfterDelay
+{
     DOMElement* newElement = (DOMElement*) [ self.container cloneNode: NO ];
     
     [ self _convertElementForMP4: newElement ];
@@ -642,9 +739,6 @@ static NSString *sAutomaticallyCheckForUpdates = @"ClickToFlash_checkForUpdatesO
 
 - (void) _convertTypesForContainer
 {
-	// notify that this ClickToFlash plugin is going away
-	[[CTFMenubarMenuController sharedController] unregisterView: self];
-	
     if ([self _useH264Version])
         [self _convertToMP4Container];
     else
@@ -652,6 +746,13 @@ static NSString *sAutomaticallyCheckForUpdates = @"ClickToFlash_checkForUpdatesO
 }
 
 - (void) _convertTypesForFlashContainer
+{
+	// Delay this until the end of the event loop, because it may cause self to be deallocated
+	[self _prepareForConversion];
+	[self performSelector:@selector(_convertTypesForFlashContainerAfterDelay) withObject:nil afterDelay:0.0];
+}
+
+- (void) _convertTypesForFlashContainerAfterDelay
 {
     DOMElement *newElement = (DOMElement *)[self.container cloneNode:YES];
 
@@ -673,10 +774,18 @@ static NSString *sAutomaticallyCheckForUpdates = @"ClickToFlash_checkForUpdatesO
     [self _replaceSelfWithElement: newElement];
 }
 
+- (void) _prepareForConversion
+{
+    [[NSNotificationCenter defaultCenter] removeObserver:self];
+	
+	// notify that this ClickToFlash plugin is going away
+	[[CTFMenubarMenuController sharedController] unregisterView: self];
+	
+	[ self _abortAlert ];
+}
+
 - (void) _replaceSelfWithElement: (DOMElement *)newElement
 {
-    [ self _abortAlert ];
-    
     // Just to be safe, since we are about to replace our containing element
     [[self retain] autorelease];
     
@@ -688,5 +797,6 @@ static NSString *sAutomaticallyCheckForUpdates = @"ClickToFlash_checkForUpdatesO
 @synthesize container = _container;
 @synthesize host = _host;
 @synthesize baseURL = _baseURL;
+@synthesize attributes = _attributes;
 
 @end
