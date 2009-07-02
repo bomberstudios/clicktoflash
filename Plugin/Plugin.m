@@ -120,7 +120,6 @@ BOOL usingMATrackingArea = NO;
 														@"com.Zattoo.prefs",
 							nil];
 		
-		[[NSUserDefaults standardUserDefaults] addSuiteNamed:@"com.github.rentzsch.clicktoflash"];
 		SparkleManager *sharedSparkleManager = [SparkleManager sharedManager];
 		NSWorkspace *sharedWorkspace = [NSWorkspace sharedWorkspace];
 		NSString *pathToRelaunch = [sharedWorkspace absolutePathForAppBundleWithIdentifier:[self launchedAppBundleIdentifier]];
@@ -418,6 +417,7 @@ BOOL usingMATrackingArea = NO;
 	
 	NSMutableDictionary *externalFileDefaults = [[CTFUserDefaultsController standardUserDefaults] dictionaryRepresentation];
 
+	[[NSUserDefaults standardUserDefaults] addSuiteNamed:@"com.github.rentzsch.clicktoflash"];
 	unsigned int i;
 	for (i = 0; i < [parasiticDefaultsNameArray count]; i++) {
 		NSString *currentParasiticDefault = [parasiticDefaultsNameArray objectAtIndex:i];
@@ -441,6 +441,7 @@ BOOL usingMATrackingArea = NO;
 			[[NSUserDefaults standardUserDefaults] removeObjectForKey:currentParasiticDefault];
 		}
 	}
+	[[NSUserDefaults standardUserDefaults] removeSuiteNamed:@"com.github.rentzsch.clicktoflash"];
 }
 
 - (void) _addApplicationWhitelistArrayToPrefsFile
