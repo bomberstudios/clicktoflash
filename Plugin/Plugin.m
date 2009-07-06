@@ -67,6 +67,7 @@ BOOL usingMATrackingArea = NO;
 
 - (void) _drawBackground;
 - (BOOL) _isOptionPressed;
+- (void) _checkMouseLocation;
 - (void) _addTrackingAreaForCTF;
 - (void) _removeTrackingAreaForCTF;
 
@@ -110,7 +111,6 @@ BOOL usingMATrackingArea = NO;
     self = [super init];
     if (self) {
 		defaultWhitelist = [NSArray arrayWithObjects:	@"com.apple.frontrow",
-														@"com.apple.dashboard",
 														@"com.apple.dashboard.client",
 														@"com.apple.ScreenSaver.Engine",
 														@"com.hulu.HuluDesktop",
@@ -364,6 +364,7 @@ BOOL usingMATrackingArea = NO;
 		
 		[self setOriginalOpacityAttributes:originalOpacityDict];
 
+		[self _checkMouseLocation];
         [self _addTrackingAreaForCTF];
     }
 
@@ -817,7 +818,7 @@ BOOL usingMATrackingArea = NO;
                 NSColor *startingColor = [NSColor colorWithDeviceWhite:1.0 alpha:1.0];
                 NSColor *endingColor = [NSColor colorWithDeviceWhite:1.0 alpha:0.0];
                 
-                [gradient initWithStartingColor:startingColor endingColor:endingColor];
+                gradient = [gradient initWithStartingColor:startingColor endingColor:endingColor];
                 
                 // draw gradient behind gear so that it's visible even on dark backgrounds
                 [gradient drawFromCenter:gearImageCenter
@@ -856,7 +857,7 @@ BOOL usingMATrackingArea = NO;
     id gradient = [NSClassFromString(@"NSGradient") alloc];
     if (gradient != nil)
     {
-        [gradient initWithStartingColor:startingColor endingColor:endingColor];
+        gradient = [gradient initWithStartingColor:startingColor endingColor:endingColor];
 
         [gradient drawInBezierPath:[NSBezierPath bezierPathWithRect:fillRect] angle:90.0 + ((mouseIsDown && mouseInside) ? 0.0 : 180.0)];
 
@@ -891,6 +892,18 @@ BOOL usingMATrackingArea = NO;
 			[ self _drawGearIcon ];
 	} else {
 		[ self _drawGearIcon ];
+	}
+}
+
+- (void) _checkMouseLocation
+{
+	NSPoint mouseLoc = [NSEvent mouseLocation];
+	
+	BOOL nowInside = NSPointInRect(mouseLoc, [_webView bounds]);
+	if (nowInside) {
+		mouseInside = YES;
+	} else {
+		mouseInside = NO;
 	}
 }
 
@@ -1211,8 +1224,14 @@ BOOL usingMATrackingArea = NO;
 	NSString* video_id = [self videoId];
     NSString* video_hash = [ self _videoHash ];
     
-    NSString* src = [ NSString stringWithFormat: @"http://www.youtube.com/get_video?fmt=18&video_id=%@&t=%@",
-					 video_id, video_hash ];
+	NSString *src;
+	if ([[CTFUserDefaultsController standardUserDefaults] boolForKey:sUseYouTubeHDH264DefaultsKey]) {
+		src = [ NSString stringWithFormat: @"http://www.youtube.com/get_video?fmt=22&video_id=%@&t=%@",
+			   video_id, video_hash ];
+	} else {
+		src = [ NSString stringWithFormat: @"http://www.youtube.com/get_video?fmt=18&video_id=%@&t=%@",
+			   video_id, video_hash ];
+	}
 	
 	[[NSWorkspace sharedWorkspace] openURLs:[NSArray arrayWithObject:[NSURL URLWithString:src]]
 					withAppBundleIdentifier:[self launchedAppBundleIdentifier]
