@@ -41,6 +41,7 @@ THE SOFTWARE.
     BOOL mouseInside;
     BOOL _isLoadingFromWhitelist;
     BOOL _fromYouTube;
+	BOOL _embeddedYouTubeView;
 	BOOL _hasH264Version;
 	BOOL _hasHDH264Version;
 	WebView *_webView;
@@ -51,6 +52,8 @@ THE SOFTWARE.
 	NSString *_src;
 	NSString *_videoId;
 	NSString *_launchedAppBundleIdentifier;
+	
+	BOOL _contextMenuIsVisible;
 }
 
 + (NSView *)plugInViewWithArguments:(NSDictionary *)arguments;
@@ -75,6 +78,10 @@ THE SOFTWARE.
 - (void)setSrc:(NSString *)newValue;
 - (NSString *)videoId;
 - (void)setVideoId:(NSString *)newValue;
+- (BOOL)_hasH264Version;
+- (void)_setHasH264Version:(BOOL)newValue;
+- (BOOL)_hasHDH264Version;
+- (void)_setHasHDH264Version:(BOOL)newValue;
 - (NSString *)launchedAppBundleIdentifier;
 - (void)setLaunchedAppBundleIdentifier:(NSString *)newValue;
 
